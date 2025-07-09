@@ -11,8 +11,17 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#define N_ENDPOINTS 4
-#define N_THREADS 2
+#define N_CLIENT_ENDPOINTS 4
+#define N_ENDPOINTS 1
+#define N_THREADS 1
+
+struct Client
+{
+    bool valid;
+    Telemetry t;
+};
+
+Client clients[N_CLIENT_ENDPOINTS];
 
 void process_packet_status(Endpoint *e, std::shared_ptr<char[]> sp){
     switch(packet_get_code(sp.get())){
@@ -39,14 +48,21 @@ void process_packet_data(Endpoint *e, std::shared_ptr<char[]> sp)
     case P_DATA_CODE_NEW_CONN:
         src_index = *((unsigned int*)&pd[OFFSET_OF_DATA]);
         printf("process_packet_data NEW_CONN src_index=%u\n", src_index);
+        clients[src_index].valid = true;
         break;
     case P_DATA_CODE_DEL_CONN:
         src_index = *((unsigned int*)&pd[OFFSET_OF_DATA]);
         printf("process_packet_data DEL_CONN src_index=%u\n", src_index);
+        clients[src_index].valid = false;
         break;
     case P_DATA_CODE_TELEMETRY:
         t = (Telemetry*)&pd[OFFSET_OF_DATA];
         printf("process_packet_data TELEMETRY src_index=%u\n", t->src_index);
+        if(clients[t->src_index].valid){
+            memcpy(&clients[t->src_index].t, t, sizeof(Telemetry));
+        }else{
+            printf("process_packet_data TELEMETRY invalid client\n");
+        }
         break;
     }
 }
@@ -82,9 +98,23 @@ void send_data_packet(EndpointContainer *econt)
     econt->sem.post();
 }
 
+void scan_clients(void)
+{
+    int N_valid = 0;
+    for(int i=0;i<N_CLIENT_ENDPOINTS;i++){
+        if(clients[i].valid)
+            N_valid++;
+    }
+    printf("scan_clients N_valid=%d\n", N_valid);
+}
+
 int main(int argc, char **argv)
 {
     EndpointContext ec(N_THREADS, N_ENDPOINTS, client_recv_cb);
+
+    for(int i=0;i<N_CLIENT_ENDPOINTS;i++){
+        clients[i].valid = false;
+    }
 
     struct sigaction act;
     memset(&act, 0, sizeof(act));
@@ -135,6 +165,7 @@ int main(int argc, char **argv)
 
     while(active && econt->valid){
         send_data_packet(econt);
+        scan_clients();
         struct timespec ts;
         ts.tv_sec = 0;
         ts.tv_nsec = 1000000000/2;

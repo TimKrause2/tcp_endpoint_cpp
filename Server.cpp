@@ -43,11 +43,21 @@ void process_packet_status(Endpoint *e, std::shared_ptr<char[]> sp){
 
 void process_packet_data(Endpoint *e, std::shared_ptr<char[]> sp)
 {
-    // fill in the src index of the packet
-    packet_data_telemetry_set_src(sp, e->container->index);
+    switch(packet_get_code(sp.get())){
+    case P_DATA_CODE_RAW_DATA:
+        e->context.broadcastPacket(sp, e);
+        break;
+    case P_DATA_CODE_NEW_CONN:
+    case P_DATA_CODE_DEL_CONN:
+        break;
+    case P_DATA_CODE_TELEMETRY:
+        // fill in the src index of the packet
+        packet_data_telemetry_set_src(sp, e->container->index);
 
-    // broadcast the data packet to all other endpoints
-    e->context.broadcastPacket(sp, e);
+        // broadcast the data packet to all other endpoints
+        e->context.broadcastPacket(sp, e);
+        break;
+    }
 }
 
 void server_recv_cb(Endpoint *e, std::shared_ptr<char[]> sp){
