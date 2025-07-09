@@ -24,7 +24,7 @@
 #include <pthread.h>
 #include <time.h>
 
-#define N_ENDPOINTS 4
+#define N_ENDPOINTS 2
 #define N_THREADS 2
 #define LISTEN_BACKLOG 2
 
@@ -57,9 +57,23 @@ void server_recv_cb(Endpoint *e, std::shared_ptr<char[]> sp){
     }
 }
 
+bool active = true;
+
+void sig_handler(int sig)
+{
+    printf("sig_handler\n");
+    active = false;
+}
+
 int main(int argc, char **argv)
 {
     EndpointContext ec(N_THREADS, N_ENDPOINTS, server_recv_cb);
+
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = sig_handler;
+    sigemptyset(&act.sa_mask);
+    sigaction(SIGINT, &act, NULL);
 
     int sfd;
     int result;
@@ -133,12 +147,12 @@ int main(int argc, char **argv)
         N_l_sockets++;
     }
 
-    while(true){
+    while(active){
         struct epoll_event ev;
         int r = epoll_wait(epfd, &ev, 1, -1);
         if(r==-1){
             perror("Server epoll_wait");
-            exit(1);
+            break;
         }else if(r==1){
             if(ev.events & EPOLLIN){
                 ec.newEndpoint(ev.data.fd, true);

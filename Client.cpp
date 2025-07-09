@@ -112,11 +112,11 @@ int main(int argc, char **argv)
 
     printf("entering main loop\n");
 
-    while(active){
+    while(active && econt->valid){
         send_data_packet(econt);
         struct timespec ts;
-        ts.tv_sec = 1;
-        ts.tv_nsec = 0;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 1000000000/60;
         nanosleep(&ts, NULL);
     }
 }
