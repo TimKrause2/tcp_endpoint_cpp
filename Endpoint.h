@@ -15,6 +15,7 @@ class EndpointContext;
 
 struct EndpointContainer
 {
+    int index;
     bool valid;
     Endpoint *e;
     Semaphore sem;
@@ -35,6 +36,8 @@ class EndpointContext
     static void* recv_routine(void *arg);
     int endpointAccept(int sfd);
 public:
+    void (*new_cb)(Endpoint *e);
+    void (*delete_cb)(Endpoint *e);
     RecvFifo recv_fifo;
     Semaphore active_sem;
     int epoll_fd;
@@ -49,6 +52,8 @@ public:
     void deleteEndpoint();
 
     void broadcastPacket(std::shared_ptr<char[]> sp, Endpoint *src=nullptr);
+    void setNewCB(void (*new_cb)(Endpoint *e));
+    void setDeleteCB(void (*delete_cb)(Endpoint *e));
 };
 
 enum {
@@ -74,7 +79,7 @@ public:
     int cfd;
     Timer send_timer;
     Timer recv_timer;
-    bool user_destroy;
+    void *user_data;
 
     int    send_state;
     std::shared_ptr<char[]> send_sp;

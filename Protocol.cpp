@@ -138,3 +138,31 @@ std::shared_ptr<char[]> packet_data_new(char *data, int nbytes, uint16_t code)
     return sp;
 }
 
+std::shared_ptr<char[]> packet_data_new_conn(unsigned int src_index)
+{
+    unsigned int data = src_index;
+    std::shared_ptr<char[]> sp = packet_data_new((char*)&data, sizeof(data), P_DATA_CODE_NEW_CONN);
+    return sp;
+}
+
+std::shared_ptr<char[]> packet_data_del_conn(unsigned int src_index)
+{
+    unsigned int data = src_index;
+    std::shared_ptr<char[]> sp = packet_data_new((char*)&data, sizeof(data), P_DATA_CODE_DEL_CONN);
+    return sp;
+}
+
+std::shared_ptr<char[]> packet_data_telemetry(Telemetry *t)
+{
+    std::shared_ptr<char[]> sp = packet_data_new((char*)t, sizeof(Telemetry), P_DATA_CODE_TELEMETRY);
+    return sp;
+}
+
+
+void packet_data_telemetry_set_src(
+        std::shared_ptr<char[]> sp,
+        unsigned int src_index)
+{
+    char* data = sp.get();
+    insert_int(data, OFFSET_OF_DATA, src_index);
+}

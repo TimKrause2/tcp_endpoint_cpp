@@ -8,7 +8,7 @@ all: Client Server
 
 Client: Client.o $(COMMON_OBJECTS)
 
-Server: Server.o $(COMMON_OBJECTS)
+Server: Server.o $(COMMON_OBJECTS) ServerFifo.o
 
 Endpoint.o:Endpoint.cpp
 
@@ -27,3 +27,5 @@ Timer.o:Timer.cpp
 Pipe.o:Pipe.cpp
 
 RecvFifo.o:RecvFifo.cpp
+
+ServerFifo.o:ServerFifo.cpp

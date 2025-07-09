@@ -1,4 +1,5 @@
 #include "Endpoint.h"
+#include "ServerFifo.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -24,7 +25,7 @@
 #include <pthread.h>
 #include <time.h>
 
-#define N_ENDPOINTS 2
+#define N_ENDPOINTS 4
 #define N_THREADS 2
 #define LISTEN_BACKLOG 2
 
@@ -42,6 +43,9 @@ void process_packet_status(Endpoint *e, std::shared_ptr<char[]> sp){
 
 void process_packet_data(Endpoint *e, std::shared_ptr<char[]> sp)
 {
+    // fill in the src index of the packet
+    packet_data_telemetry_set_src(sp, e->container->index);
+
     // broadcast the data packet to all other endpoints
     e->context.broadcastPacket(sp, e);
 }
@@ -65,9 +69,97 @@ void sig_handler(int sig)
     active = false;
 }
 
+pthread_t server_thread;
+ServerFifo server_fifo(5);
+Semaphore delete_sem(0);
+std::list<Endpoint*> clients;
+struct ClientUserData
+{
+    std::list<Endpoint*>::iterator it;
+    unsigned int index;
+};
+
+void* server_thread_routine(void *arg)
+{
+    printf("server_thread_routine\n");
+    while(true){
+        void *arg;
+        unsigned short code;
+        if(server_fifo.read(arg, code)){
+            printf("server_thread_routine new code\n");
+            if(code==P_DATA_CODE_NEW_CONN){
+                Endpoint *e = (Endpoint*)arg;
+                // broadcast new connection to client list
+                // and echo client list connections
+                std::shared_ptr<char[]> sp_new =
+                        packet_data_new_conn(e->container->index);
+                for(auto &ce : clients){
+                    ce->container->sem.wait();
+                    ce->sendPacket(sp_new);
+                    ce->container->sem.post();
+                    e->container->sem.wait();
+                    std::shared_ptr<char[]> sp_client =
+                        packet_data_new_conn(ce->container->index);
+                    e->sendPacket(sp_client);
+                    e->container->sem.post();
+                }
+                // add this endpoint to the client list
+                clients.push_front(e);
+                ClientUserData *udata = (ClientUserData*)e->user_data;
+                udata->it = clients.begin();
+                udata->index = e->container->index;
+            }else if(code==P_DATA_CODE_DEL_CONN){
+                ClientUserData *udata = (ClientUserData*)arg;
+                // remove from the client list
+                clients.erase(udata->it);
+                // broadcast the del conn to the client list
+                char data[64];
+                std::shared_ptr<char[]> sp =
+                    packet_data_del_conn(udata->index);
+                for(auto &ce : clients){
+                    ce->container->sem.wait();
+                    if(ce->container->valid)
+                        ce->sendPacket(sp);
+                    ce->container->sem.post();
+                }
+                delete udata;
+                delete_sem.post();
+            }
+        }else{
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
+void server_new_cb(Endpoint *e)
+{
+    // allocate the client user data
+    ClientUserData *udata = new ClientUserData;
+    e->user_data = (void*)udata;
+    server_fifo.write((void*)e, P_DATA_CODE_NEW_CONN);
+}
+
+void server_delete_cb(Endpoint *e)
+{
+    ClientUserData* udata = (ClientUserData*)e->user_data;
+    server_fifo.write((void*)udata, P_DATA_CODE_DEL_CONN);
+    delete_sem.wait();
+}
+
 int main(int argc, char **argv)
 {
+    int result;
+
     EndpointContext ec(N_THREADS, N_ENDPOINTS, server_recv_cb);
+    ec.setNewCB(server_new_cb);
+    ec.setDeleteCB(server_delete_cb);
+
+    result = pthread_create(&server_thread, NULL, server_thread_routine, NULL);
+    if(result!=0){
+        printf("pthread_create error:%s\n", strerror(result));
+        exit(1);
+    }
 
     struct sigaction act;
     memset(&act, 0, sizeof(act));
@@ -76,7 +168,6 @@ int main(int argc, char **argv)
     sigaction(SIGINT, &act, NULL);
 
     int sfd;
-    int result;
     struct addrinfo hints;
     struct addrinfo *ai_res;
     struct addrinfo *ai_ptr;

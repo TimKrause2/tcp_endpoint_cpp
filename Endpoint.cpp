@@ -12,11 +12,14 @@ EndpointContext::EndpointContext(
     : N_threads(N_threads),
       N_endpoints(N_endpoints),
       recv_cb(recv_cb),
-      recv_fifo(32)
+      recv_fifo(32),
+      new_cb(nullptr),
+      delete_cb(nullptr)
 {
     // allocate the container array
     endpoints.reset(new EndpointContainer[N_endpoints]);
     for(int i=0;i<N_endpoints;i++){
+        endpoints[i].index = i;
         endpoints[i].context = this;
     }
 
@@ -255,10 +258,19 @@ void EndpointContext::broadcastPacket(
     }
 }
 
-Endpoint::Endpoint(
-        EndpointContext &context,
-        EndpointContainer *container,
-        int fd)
+void EndpointContext::setNewCB(void (*new_cb0)(Endpoint *e))
+{
+    new_cb = new_cb0;
+}
+
+void EndpointContext::setDeleteCB(void (*delete_cb0)(Endpoint *e))
+{
+    delete_cb = delete_cb0;
+}
+
+Endpoint::Endpoint(EndpointContext &context,
+                   EndpointContainer *container,
+                   int fd)
     : context(context),
       container(container),
       cfd(fd),
@@ -279,6 +291,8 @@ Endpoint::Endpoint(
     if(r==-1){
         perror("Endpoint::Endpoint epoll_ctl");
     }
+
+    if(context.new_cb) context.new_cb(this);
 }
 
 Endpoint::~Endpoint()
@@ -290,6 +304,8 @@ Endpoint::~Endpoint()
     }
 
     close(cfd);
+
+    if(context.delete_cb) context.delete_cb(this);
 }
 
 void Endpoint::send_timer_cb(union sigval arg)

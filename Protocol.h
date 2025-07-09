@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <memory>
+#include <glm/glm.hpp>
 
 #define WATCHDOG_TIMEOUT_S 10
 #define CONFIRM_TIMEOUT_S  5
@@ -18,7 +19,10 @@ enum {
 };
 
 enum {
-    P_DATA_CODE_RAW_DATA
+    P_DATA_CODE_RAW_DATA,
+    P_DATA_CODE_NEW_CONN,
+    P_DATA_CODE_DEL_CONN,
+    P_DATA_CODE_TELEMETRY
 };
 
 #define SIZEOF_PACKET_COMMON  16
@@ -44,3 +48,21 @@ int packet_ok(char *packet);
 
 char *packet_status_new(uint16_t code);
 std::shared_ptr<char[]> packet_data_new(char *data, int nbytes, uint16_t code);
+
+#define OFFSET_OF_SRC_INDEX OFFSET_OF_DATA
+#define SIZEOF_DATA_COMMON (SIZEOF_PACKET_COMMON+4)
+
+std::shared_ptr<char[]> packet_data_new_conn(unsigned int src_index);
+std::shared_ptr<char[]> packet_data_del_conn(unsigned int src_index);
+
+struct Telemetry
+{
+    unsigned int src_index;
+    glm::vec3 position;
+    glm::vec4 orientation;
+};
+
+std::shared_ptr<char[]> packet_data_telemetry(Telemetry *t);
+void packet_data_telemetry_set_src(
+        std::shared_ptr<char[]> sp,
+        unsigned int src_index);

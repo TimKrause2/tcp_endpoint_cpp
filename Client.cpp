@@ -28,7 +28,27 @@ void process_packet_status(Endpoint *e, std::shared_ptr<char[]> sp){
 
 void process_packet_data(Endpoint *e, std::shared_ptr<char[]> sp)
 {
-    printf("process_packet_data e=%p sp=%p\n", e, sp.get());
+    //printf("process_packet_data e=%p sp=%p\n", e, sp.get());
+    char *pd = sp.get();
+    unsigned int src_index;
+    Telemetry *t;
+    switch(packet_get_code(pd)){
+    case P_DATA_CODE_RAW_DATA:
+        printf("process_packet_data RAW_DATA\n");
+        break;
+    case P_DATA_CODE_NEW_CONN:
+        src_index = *((unsigned int*)&pd[OFFSET_OF_DATA]);
+        printf("process_packet_data NEW_CONN src_index=%u\n", src_index);
+        break;
+    case P_DATA_CODE_DEL_CONN:
+        src_index = *((unsigned int*)&pd[OFFSET_OF_DATA]);
+        printf("process_packet_data DEL_CONN src_index=%u\n", src_index);
+        break;
+    case P_DATA_CODE_TELEMETRY:
+        t = (Telemetry*)&pd[OFFSET_OF_DATA];
+        printf("process_packet_data TELEMETRY src_index=%u\n", t->src_index);
+        break;
+    }
 }
 
 void client_recv_cb(Endpoint *e, std::shared_ptr<char[]> sp){
@@ -52,8 +72,9 @@ void sig_handler(int sig)
 
 void send_data_packet(EndpointContainer *econt)
 {
-    char pdata[64];
-    std::shared_ptr<char[]> sp = packet_data_new(pdata, 64, P_DATA_CODE_RAW_DATA);
+    Telemetry t;
+    t.src_index = 0;
+    std::shared_ptr<char[]> sp = packet_data_telemetry(&t);
     econt->sem.wait();
     if(econt->valid){
         econt->e->sendPacket(sp);
@@ -116,7 +137,7 @@ int main(int argc, char **argv)
         send_data_packet(econt);
         struct timespec ts;
         ts.tv_sec = 0;
-        ts.tv_nsec = 1000000000/60;
+        ts.tv_nsec = 1000000000/2;
         nanosleep(&ts, NULL);
     }
 }
