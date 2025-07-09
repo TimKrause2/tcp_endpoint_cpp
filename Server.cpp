@@ -123,7 +123,6 @@ void* server_thread_routine(void *arg)
                 // remove from the client list
                 clients.erase(udata->it);
                 // broadcast the del conn to the client list
-                char data[64];
                 std::shared_ptr<char[]> sp =
                     packet_data_del_conn(udata->index);
                 for(auto &ce : clients){
