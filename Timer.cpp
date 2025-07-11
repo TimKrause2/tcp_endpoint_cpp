@@ -40,3 +40,15 @@ void Timer::set(int seconds)
         perror("Timer::set timer_settime");
     }
 }
+
+void Timer::disarm(void)
+{
+    if(!initialized)return;
+    struct itimerspec ts;
+    memset(&ts, 0, sizeof(ts));
+
+    int r = timer_settime(tid, 0, &ts, NULL);
+    if(r==-1){
+        perror("Timer::disarm timer_settime");
+    }
+}

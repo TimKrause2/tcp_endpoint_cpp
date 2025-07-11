@@ -91,11 +91,7 @@ void send_data_packet(EndpointContainer *econt)
     Telemetry t;
     t.src_index = 0;
     std::shared_ptr<char[]> sp = packet_data_telemetry(&t);
-    econt->sem.wait();
-    if(econt->valid){
-        econt->e->sendPacket(sp);
-    }
-    econt->sem.post();
+    econt->sendPacket(sp);
 }
 
 void scan_clients(void)

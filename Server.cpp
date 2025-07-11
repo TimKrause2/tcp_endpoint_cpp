@@ -89,7 +89,7 @@ struct ClientUserData
     unsigned int index;
 };
 
-void* server_thread_routine(void *arg)
+void* server_thread_routine(void *nu)
 {
     printf("server_thread_routine\n");
     while(true){
@@ -104,14 +104,10 @@ void* server_thread_routine(void *arg)
                 std::shared_ptr<char[]> sp_new =
                         packet_data_new_conn(e->container->index);
                 for(auto &ce : clients){
-                    ce->container->sem.wait();
-                    ce->sendPacket(sp_new);
-                    ce->container->sem.post();
-                    e->container->sem.wait();
+                    ce->container->sendPacket(sp_new, nullptr);
                     std::shared_ptr<char[]> sp_client =
                         packet_data_new_conn(ce->container->index);
-                    e->sendPacket(sp_client);
-                    e->container->sem.post();
+                    e->container->sendPacket(sp_client, nullptr);
                 }
                 // add this endpoint to the client list
                 clients.push_front(e);
@@ -126,10 +122,7 @@ void* server_thread_routine(void *arg)
                 std::shared_ptr<char[]> sp =
                     packet_data_del_conn(udata->index);
                 for(auto &ce : clients){
-                    ce->container->sem.wait();
-                    if(ce->container->valid)
-                        ce->sendPacket(sp);
-                    ce->container->sem.post();
+                    ce->container->sendPacket(sp, nullptr);
                 }
                 delete udata;
                 delete_sem.post();
@@ -183,8 +176,8 @@ int main(int argc, char **argv)
     int N_l_sockets=0;
     struct sigaction sigact;
 
-    if( argc < 2 ){
-        printf("Usage:%s <service or port>\n",argv[0]);
+    if( argc < 3 ){
+        printf("Usage:%s <address or +(ipv4 and ipv6)> <service or port>\n",argv[0]);
         exit( 1 );
     }
 
@@ -194,7 +187,13 @@ int main(int argc, char **argv)
     hints.ai_protocol = 0;
     hints.ai_flags |= AI_PASSIVE;
 
-    result = getaddrinfo( NULL, argv[1], &hints, &ai_res );
+    char *name;
+    if(*argv[1]=='+'){
+        name = NULL;
+    }else{
+        name = argv[1];
+    }
+    result = getaddrinfo( name, argv[2], &hints, &ai_res );
     if( result ){
         printf("getaddrinfo error:%s\n",gai_strerror( result ) );
         exit( 1 );
@@ -205,6 +204,7 @@ int main(int argc, char **argv)
         perror("epoll_create1(0)");
         exit(1);
     }
+    printf("epfd:%d\n", epfd);
     struct epoll_event *revents;
     struct epoll_event ev;
     memset(&ev, 0, sizeof(ev));
@@ -218,7 +218,7 @@ int main(int argc, char **argv)
             perror( "socket" );
             continue;
         }
-
+        printf("socket sfd:%d\n", sfd);
         int reuseport=1;
         setsockopt(sfd,SOL_SOCKET,SO_REUSEPORT,&reuseport,sizeof(int));
 

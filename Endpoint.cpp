@@ -5,6 +5,91 @@
 #include <errno.h>
 #include <memory>
 
+bool EndpointContainer::processRecv(void)
+{
+    bool valid_r;
+    sem.wait();
+    if(valid){
+        e->processRecv();
+        if(e->recv_state == RECV_ERROR){
+            deleteEndpoint_internal();
+        }
+    }
+    valid_r = valid;
+    sem.post();
+    return valid_r;
+}
+
+bool EndpointContainer::processSend(void)
+{
+    bool valid_r;
+    sem.wait();
+    if(valid){
+        e->processSend();
+        if(e->send_state == SEND_ERROR){
+            deleteEndpoint_internal();
+        }
+    }
+    valid_r = valid;
+    sem.post();
+    return valid;
+}
+
+void EndpointContainer::deleteEndpoint_internal(void)
+{
+    valid = false;
+    e.reset(nullptr);
+    context->active_sem.wait();
+}
+
+void EndpointContainer::deleteEndpoint(void)
+{
+    sem.wait();
+    if(valid){
+        deleteEndpoint_internal();
+    }
+    sem.post();
+}
+
+void EndpointContainer::sendPacket(
+        std::shared_ptr<char[]> sp,
+        Endpoint* exclude)
+{
+    sem.wait();
+    if(valid){
+        //printf("EndpointContext::broadcastPacket e=%p\n", endpoints[i].e);
+        if(e.get() != exclude){
+            e->sendPacket(sp);
+        }
+    }
+    sem.post();
+}
+
+bool EndpointContainer::newEndpoint(int fd)
+{
+    bool allocated = false;
+    // lock the semaphore
+    sem.wait();
+    // check for available
+    if(!valid){
+        e.reset(new Endpoint(*context, this, fd));
+        valid = true;
+        allocated = true;
+        context->active_sem.post();
+    }
+    // unlock the semaphore
+    sem.post();
+    return allocated;
+}
+
+
+
+
+
+
+
+
+
 EndpointContext::EndpointContext(
         int N_threads,
         int N_endpoints,
@@ -51,11 +136,7 @@ EndpointContext::~EndpointContext()
 {
     // terminate all current connections
     for(int i=0;i<N_endpoints;i++){
-        endpoints[i].sem.wait();
-        if(endpoints[i].valid){
-            delete endpoints[i].e;
-        }
-        endpoints[i].sem.post();
+        endpoints[i].deleteEndpoint();
     }
 
     pthread_kill(recv_thread, SIGINT);
@@ -85,49 +166,19 @@ void* EndpointContext::thread_routine(void *arg)
             return NULL;
         }else if(Nevents){
             //printf("EndpointContext::thread_routine events=%d\n", event.events);
+            EndpointContainer *econt = (EndpointContainer*)event.data.ptr;
             // check for errors first
             if(event.events & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)){
                 // destroy the endpoint
-                EndpointContainer *econt = (EndpointContainer*)event.data.ptr;
-                econt->sem.wait();
-                if(econt->valid){
-                    econt->valid = false;
-                    delete econt->e;
-                    ec->active_sem.wait();
-                }
-                econt->sem.post();
+                econt->deleteEndpoint();
                 continue;
             }
             if(event.events & EPOLLIN){
-                // data is available for reading
-                EndpointContainer *econt = (EndpointContainer*)event.data.ptr;
-                econt->sem.wait();
-                if(econt->valid){
-                    Endpoint *e = econt->e;
-                    e->processRecv();
-                    if(e->recv_state == RECV_ERROR){
-                        econt->valid = false;
-                        delete econt->e;
-                        ec->active_sem.wait();
-                    }
-                }
-                econt->sem.post();
+                if(!econt->processRecv())
+                    continue;
             }
-
             if(event.events & EPOLLOUT){
-                // data is available for reading
-                EndpointContainer *econt = (EndpointContainer*)event.data.ptr;
-                econt->sem.wait();
-                if(econt->valid){
-                    Endpoint *e = econt->e;
-                    e->processSend();
-                    if(e->send_state == SEND_ERROR){
-                        econt->valid = false;
-                        delete econt->e;
-                        ec->active_sem.wait();
-                    }
-                }
-                econt->sem.post();
+                econt->processSend();
             }
         }
     }
@@ -214,19 +265,8 @@ EndpointContainer* EndpointContext::newEndpoint(
     // find an available container
     int i;
     for(i=0;i<N_endpoints;i++){
-        bool found = false;
-        // lock the semaphore
-        endpoints[i].sem.wait();
-        // check for available
-        if(!endpoints[i].valid){
-            endpoints[i].e = new Endpoint(*this, &endpoints[i], cfd);
-            endpoints[i].valid = true;
-            found = true;
-            active_sem.post();
-        }
-        // unlock the semaphore
-        endpoints[i].sem.post();
-        if(found) break;
+        if(endpoints[i].newEndpoint(cfd))
+            break;
     }
     return &endpoints[i];
 }
@@ -236,25 +276,8 @@ void EndpointContext::broadcastPacket(
         Endpoint *src)
 {
     //printf("EndpointContext::broadcastPacket src=%p\n", src);
-    if(src){
-        for(int i=0;i<N_endpoints;i++){
-            endpoints[i].sem.wait();
-            if(endpoints[i].valid){
-                //printf("EndpointContext::broadcastPacket e=%p\n", endpoints[i].e);
-                if(endpoints[i].e != src){
-                    endpoints[i].e->sendPacket(sp);
-                }
-            }
-            endpoints[i].sem.post();
-        }
-    }else{
-        for(int i=0;i<N_endpoints;i++){
-            endpoints[i].sem.wait();
-            if(endpoints[i].valid){
-                endpoints[i].e->sendPacket(sp);
-            }
-            endpoints[i].sem.post();
-        }
+    for(int i=0;i<N_endpoints;i++){
+        endpoints[i].sendPacket(sp, src);
     }
 }
 
@@ -317,14 +340,7 @@ void Endpoint::send_timer_cb(union sigval arg)
     char* p = packet_status_new(P_ST_CODE_CONFIRM);
     if(p){
         std::shared_ptr<char[]> sp(p);
-        econt->sem.wait();
-        //printf("Endpoint::send_timer_cb semaphore locked\n");
-        if(econt->valid){
-            econt->e->sendPacket(sp);
-        }else{
-            printf("Endpoint::send_timer_cb container invalid.\n");
-        }
-        econt->sem.post();
+        econt->sendPacket(sp, nullptr);
     }else{
         printf("Endpoint::send_timer_cb null packet\n");
     }
@@ -336,13 +352,7 @@ void Endpoint::recv_timer_cb(union sigval arg)
     // close the connection
     printf("Endpoint::recv_timer_cb\n");
     EndpointContainer *econt = (EndpointContainer*)arg.sival_ptr;
-    econt->sem.wait();
-    if(econt->valid){
-        econt->valid = false;
-        delete econt->e;
-        econt->context->active_sem.wait();
-    }
-    econt->sem.post();
+    econt->deleteEndpoint();
 }
 
 void Endpoint::sendPacket(std::shared_ptr<char[]> sp)
@@ -354,12 +364,18 @@ void Endpoint::sendPacket(std::shared_ptr<char[]> sp)
     if(send_state==SEND_OPEN){
         // initiate the transfer
         //printf("Endpoint::sendPacket initiating transmission.\n");
-        send_state = SEND_READY;
-        send_sp = send_fifo.read();
-        send_buf = send_sp.get();
-        send_bytes = packet_get_length(send_buf);
+        prepareSend();
+        // create an EPOLLOUT event to initiate the transfer
         epoll_ctl(context.epoll_fd, EPOLL_CTL_MOD, cfd, &ev_cfd_rw);
     }
+}
+
+void Endpoint::prepareSend(void)
+{
+    send_sp = send_fifo.read();
+    send_buf = send_sp.get();
+    send_bytes = packet_get_length(send_buf);
+    send_state = SEND_READY;
 }
 
 void Endpoint::processSend(void)
@@ -367,10 +383,7 @@ void Endpoint::processSend(void)
     //printf("Endpoint::processSend\n");
     if(send_state==SEND_OPEN){
         if(send_fifo.ready()){
-            send_sp = send_fifo.read();
-            send_buf = send_sp.get();
-            send_bytes = packet_get_length(send_buf);
-            send_state = SEND_READY;
+            prepareSend();
         }else{
             return;
         }
@@ -397,16 +410,14 @@ void Endpoint::processSend(void)
             send_sp.reset();
             send_timer.set(CONFIRM_TIMEOUT_S);
             if(send_fifo.ready()){
-                send_sp = send_fifo.read();
-                send_buf = send_sp.get();
-                send_bytes = packet_get_length(send_buf);
-                send_state = SEND_READY;
+                prepareSend();
                 continue;
             }else{
                 send_state = SEND_OPEN;
                 return;
             }
         }else{
+            printf("Endpoint::processSend parital send r=%ld\n", r);
             send_buf += r;
             send_bytes -= r;
             send_timer.set(CONFIRM_TIMEOUT_S);
@@ -471,6 +482,7 @@ void Endpoint::processRecv(void)
                 recv_sp.reset();
                 return;
             }else{
+                printf("Endpoint::processRecv parital read r=%ld\n", r);
                 recv_buf += r;
                 recv_bytes -= r;
                 recv_timer.set(WATCHDOG_TIMEOUT_S);

@@ -16,11 +16,23 @@ class EndpointContext;
 struct EndpointContainer
 {
     int index;
-    bool valid;
-    Endpoint *e;
-    Semaphore sem;
     EndpointContext *context;
-    EndpointContainer():valid(false),e(nullptr),sem(1){}
+    bool valid;
+private:
+    std::unique_ptr<Endpoint> e;
+    Semaphore sem;
+    bool processRecv(void); // true = endpoint still valid
+    bool processSend(void); // false = endpoint was deleted
+    void deleteEndpoint_internal(void);
+
+    friend class EndpointContext;
+
+public:
+    EndpointContainer():valid(false),sem(1){}
+    void sendPacket(std::shared_ptr<char[]> sp, Endpoint *exclude=nullptr);
+    // newEndpoint returns true if the allocation took place
+    bool newEndpoint(int fd);
+    void deleteEndpoint(void);
 };
 
 class EndpointContext
@@ -102,6 +114,7 @@ public:
     static void send_timer_cb(union sigval);
     static void recv_timer_cb(union sigval);
     void sendPacket(std::shared_ptr<char[]> sp);
+    void prepareSend(void);
     void processSend(void);
     void processRecv(void);
 };

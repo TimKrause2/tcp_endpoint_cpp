@@ -7,4 +7,5 @@ struct Timer{
     Timer(void (*cb)(union sigval), void *arg);
     ~Timer();
     void set(int seconds);
+    void disarm(void);
 };
