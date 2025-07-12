@@ -88,9 +88,14 @@ void sig_handler(int sig)
 
 void send_data_packet(EndpointContainer *econt)
 {
-    Telemetry t;
-    t.src_index = 0;
-    std::shared_ptr<char[]> sp = packet_data_telemetry(&t);
+    // Telemetry t;
+    // t.src_index = 0;
+    // std::shared_ptr<char[]> sp = packet_data_telemetry(&t);
+
+    // send a large raw data packet
+    int size = 1024*1024;
+    std::unique_ptr<char[]> data(new char[size]);
+    std::shared_ptr<char[]> sp = packet_data_new(data.get(), size, P_DATA_CODE_RAW_DATA);
     econt->sendPacket(sp);
 }
 

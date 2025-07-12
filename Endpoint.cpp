@@ -417,7 +417,7 @@ void Endpoint::processSend(void)
                 return;
             }
         }else{
-            printf("Endpoint::processSend parital send r=%ld\n", r);
+            printf("Endpoint::processSend partial send r=%ld\n", r);
             send_buf += r;
             send_bytes -= r;
             send_timer.set(CONFIRM_TIMEOUT_S);
@@ -482,7 +482,7 @@ void Endpoint::processRecv(void)
                 recv_sp.reset();
                 return;
             }else{
-                printf("Endpoint::processRecv parital read r=%ld\n", r);
+                printf("Endpoint::processRecv partial read r=%ld\n", r);
                 recv_buf += r;
                 recv_bytes -= r;
                 recv_timer.set(WATCHDOG_TIMEOUT_S);
