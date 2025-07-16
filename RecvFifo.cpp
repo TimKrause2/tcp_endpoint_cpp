@@ -21,9 +21,16 @@ void RecvFifo::write(Endpoint *e, std::shared_ptr<char[]> sp)
     read_sem.post();
 }
 
-bool RecvFifo::read(Endpoint *&e, std::shared_ptr<char[]> &sp)
+bool RecvFifo::read(
+        Endpoint *&e,
+        std::shared_ptr<char[]> &sp,
+        int timeout)
 {
-    if(!read_sem.wait()) return false;
+    if(timeout==-1){
+        if(!read_sem.wait()) return false;
+    }else{
+        if(!read_sem.timedwait(timeout)) return false;
+    }
     fifo_sem.wait();
     RecvDetail rd = data.back();
     data.pop_back();

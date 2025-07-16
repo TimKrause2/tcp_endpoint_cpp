@@ -21,9 +21,16 @@ void ServerFifo::write(void *arg, unsigned short code)
     read_sem.post();
 }
 
-bool ServerFifo::read(void *&arg, unsigned short &code)
+bool ServerFifo::read(
+        void *&arg,
+        unsigned short &code,
+        int timeout)
 {
-    if(!read_sem.wait()) return false;
+    if(timeout==-1){
+        if(!read_sem.wait()) return false;
+    }else{
+        if(!read_sem.timedwait(timeout)) return false;
+    }
     fifo_sem.wait();
     ServerDetail sd = data.back();
     data.pop_back();

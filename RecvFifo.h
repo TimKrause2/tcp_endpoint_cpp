@@ -21,8 +21,11 @@ struct RecvFifo
     int N_fifo;
     RecvFifo(int N_fifo);
     ~RecvFifo();
-    void write(Endpoint *e, std::shared_ptr<char[]> sp);
-    bool read(Endpoint *&e, std::shared_ptr<char[]> &sp);
+    void write(Endpoint *e,
+               std::shared_ptr<char[]> sp);
+    bool read(Endpoint *&e,
+              std::shared_ptr<char[]> &sp,
+              int timeout=-1);
     int ready(void);
     bool full(void);
 };

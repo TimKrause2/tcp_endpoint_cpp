@@ -82,14 +82,6 @@ bool EndpointContainer::newEndpoint(int fd)
     return allocated;
 }
 
-
-
-
-
-
-
-
-
 EndpointContext::EndpointContext(
         int N_threads,
         int N_endpoints,
@@ -99,7 +91,8 @@ EndpointContext::EndpointContext(
       recv_cb(recv_cb),
       recv_fifo(32),
       new_cb(nullptr),
-      delete_cb(nullptr)
+      delete_cb(nullptr),
+      threads_enabled(true)
 {
     // allocate the container array
     endpoints.reset(new EndpointContainer[N_endpoints]);
@@ -134,18 +127,16 @@ EndpointContext::EndpointContext(
 
 EndpointContext::~EndpointContext()
 {
+    printf("EndpointContext::~EndpointContext\n");
     // terminate all current connections
     for(int i=0;i<N_endpoints;i++){
         endpoints[i].deleteEndpoint();
     }
 
-    pthread_kill(recv_thread, SIGINT);
-    pthread_join(recv_thread, NULL);
+    printf("EndpointContext::~EndpointContext disabling threads.\n");
+    threads_enabled = false;
 
-    // terminate and join all the threads
-    for(int i=0;i<N_threads;i++){
-        pthread_kill(threads[i], SIGINT);
-    }
+    pthread_join(recv_thread, NULL);
     for(int i=0;i<N_threads;i++){
         pthread_join(threads[i], NULL);
     }
@@ -158,12 +149,11 @@ void* EndpointContext::thread_routine(void *arg)
 {
     EndpointContext* ec = (EndpointContext*)arg;
 
-    while(true){
+    while(ec->threads_enabled){
         struct epoll_event event;
-        int Nevents = epoll_wait(ec->epoll_fd, &event, 1, -1);
+        int Nevents = epoll_wait(ec->epoll_fd, &event, 1, 100);
         if(Nevents==-1){
             perror("EndpointContext::thread_routine epoll_wait");
-            return NULL;
         }else if(Nevents){
             //printf("EndpointContext::thread_routine events=%d\n", event.events);
             EndpointContainer *econt = (EndpointContainer*)event.data.ptr;
@@ -182,6 +172,7 @@ void* EndpointContext::thread_routine(void *arg)
             }
         }
     }
+    printf("EndpointContext::thread_routine exiting.\n");
     return NULL;
 }
 
@@ -189,15 +180,15 @@ void* EndpointContext::recv_routine(void *arg)
 {
     EndpointContext* ec = (EndpointContext*)arg;
 
-    while(true){
+    while(ec->threads_enabled){
         Endpoint *e;
         std::shared_ptr<char[]> sp;
-        if(ec->recv_fifo.read(e, sp)){
+        if(ec->recv_fifo.read(e, sp, 250)){
             ec->recv_cb(e, sp);
-        }else{
-            return NULL;
         }
     }
+    printf("EndpointContext::recv_routine exiting.\n");
+    return NULL;
 }
 
 

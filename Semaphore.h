@@ -8,6 +8,7 @@ struct Semaphore
     Semaphore(int count=0);
     ~Semaphore();
     bool wait(void);
+    bool timedwait(int millisec);
     void post(void);
     int value(void);
 };

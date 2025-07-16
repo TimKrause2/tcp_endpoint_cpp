@@ -92,10 +92,10 @@ struct ClientUserData
 void* server_thread_routine(void *nu)
 {
     printf("server_thread_routine\n");
-    while(true){
+    while(active){
         void *arg;
         unsigned short code;
-        if(server_fifo.read(arg, code)){
+        if(server_fifo.read(arg, code, 250)){
             printf("server_thread_routine new code\n");
             if(code==P_DATA_CODE_NEW_CONN){
                 Endpoint *e = (Endpoint*)arg;
@@ -127,10 +127,9 @@ void* server_thread_routine(void *nu)
                 delete udata;
                 delete_sem.post();
             }
-        }else{
-            return NULL;
         }
     }
+    printf("server_thread_routine exiting\n");
     return NULL;
 }
 
@@ -144,6 +143,7 @@ void server_new_cb(Endpoint *e)
 
 void server_delete_cb(Endpoint *e)
 {
+    if(!active) return;
     ClientUserData* udata = (ClientUserData*)e->user_data;
     server_fifo.write((void*)udata, P_DATA_CODE_DEL_CONN);
     delete_sem.wait();
@@ -152,16 +152,6 @@ void server_delete_cb(Endpoint *e)
 int main(int argc, char **argv)
 {
     int result;
-
-    EndpointContext ec(N_THREADS, N_ENDPOINTS, server_recv_cb);
-    ec.setNewCB(server_new_cb);
-    ec.setDeleteCB(server_delete_cb);
-
-    result = pthread_create(&server_thread, NULL, server_thread_routine, NULL);
-    if(result!=0){
-        printf("pthread_create error:%s\n", strerror(result));
-        exit(1);
-    }
 
     struct sigaction act;
     memset(&act, 0, sizeof(act));
@@ -210,6 +200,16 @@ int main(int argc, char **argv)
     memset(&ev, 0, sizeof(ev));
     ev.events = EPOLLIN;
 
+    EndpointContext ec(N_THREADS, N_ENDPOINTS, server_recv_cb);
+    ec.setNewCB(server_new_cb);
+    ec.setDeleteCB(server_delete_cb);
+
+    result = pthread_create(&server_thread, NULL, server_thread_routine, NULL);
+    if(result!=0){
+        printf("pthread_create error:%s\n", strerror(result));
+        exit(1);
+    }
+
     for(ai_ptr = ai_res;ai_ptr;ai_ptr = ai_ptr->ai_next) {
         sfd = socket( ai_ptr->ai_family,
                       ai_ptr->ai_socktype | SOCK_NONBLOCK,
@@ -249,15 +249,17 @@ int main(int argc, char **argv)
 
     while(active){
         struct epoll_event ev;
-        int r = epoll_wait(epfd, &ev, 1, -1);
+        int r = epoll_wait(epfd, &ev, 1, 100);
         if(r==-1){
             perror("Server epoll_wait");
-            break;
         }else if(r==1){
             if(ev.events & EPOLLIN){
                 ec.newEndpoint(ev.data.fd, true);
             }
         }
     }
+
+    pthread_join(server_thread, NULL);
+    printf("Server main exiting.\n");
 }
 

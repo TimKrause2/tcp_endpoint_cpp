@@ -42,6 +42,7 @@ class EndpointContext
     int N_endpoints;
     void (*recv_cb)(Endpoint *e, std::shared_ptr<char[]> sp);
     pthread_t recv_thread;
+    bool threads_enabled;
 
     std::unique_ptr<pthread_t[]> threads;
     static void* thread_routine(void *arg);

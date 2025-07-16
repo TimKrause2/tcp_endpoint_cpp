@@ -21,8 +21,11 @@ struct ServerFifo
     int N_fifo;
     ServerFifo(int N_fifo);
     ~ServerFifo();
-    void write(void *arg, unsigned short code);
-    bool read(void  *&arg, unsigned short &code);
+    void write(void *arg,
+               unsigned short code);
+    bool read(void  *&arg,
+              unsigned short &code,
+              int timeout=-1);
     int ready(void);
     bool full(void);
 };

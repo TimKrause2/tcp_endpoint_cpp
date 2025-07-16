@@ -165,8 +165,8 @@ int main(int argc, char **argv)
     printf("entering main loop\n");
 
     while(active && econt->valid){
-        send_data_packet(econt);
-        scan_clients();
+        //send_data_packet(econt);
+        //scan_clients();
         struct timespec ts;
         ts.tv_sec = 0;
         ts.tv_nsec = 1000000000/2;
