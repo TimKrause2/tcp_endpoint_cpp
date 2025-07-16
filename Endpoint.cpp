@@ -127,13 +127,13 @@ EndpointContext::EndpointContext(
 
 EndpointContext::~EndpointContext()
 {
-    printf("EndpointContext::~EndpointContext\n");
+    //printf("EndpointContext::~EndpointContext\n");
     // terminate all current connections
     for(int i=0;i<N_endpoints;i++){
         endpoints[i].deleteEndpoint();
     }
 
-    printf("EndpointContext::~EndpointContext disabling threads.\n");
+    //printf("EndpointContext::~EndpointContext disabling threads.\n");
     threads_enabled = false;
 
     pthread_join(recv_thread, NULL);
@@ -172,7 +172,7 @@ void* EndpointContext::thread_routine(void *arg)
             }
         }
     }
-    printf("EndpointContext::thread_routine exiting.\n");
+    //printf("EndpointContext::thread_routine exiting.\n");
     return NULL;
 }
 
@@ -183,11 +183,12 @@ void* EndpointContext::recv_routine(void *arg)
     while(ec->threads_enabled){
         Endpoint *e;
         std::shared_ptr<char[]> sp;
-        if(ec->recv_fifo.read(e, sp, 250)){
-            ec->recv_cb(e, sp);
+        RecvDetail rd;
+        if(ec->recv_fifo.read(rd, 250)){
+            ec->recv_cb(rd.e, rd.sp);
         }
     }
-    printf("EndpointContext::recv_routine exiting.\n");
+    //printf("EndpointContext::recv_routine exiting.\n");
     return NULL;
 }
 
@@ -363,7 +364,7 @@ void Endpoint::sendPacket(std::shared_ptr<char[]> sp)
 
 void Endpoint::prepareSend(void)
 {
-    send_sp = send_fifo.read();
+    send_fifo.read(send_sp);
     send_buf = send_sp.get();
     send_bytes = packet_get_length(send_buf);
     send_state = SEND_READY;
@@ -464,8 +465,10 @@ void Endpoint::processRecv(void)
                 recv_state = RECV_HEADER;
                 recv_timer.set(WATCHDOG_TIMEOUT_S);
                 //printf("Endpoint::processRecv e=%p sp=%p use_count=%ld\n", this, recv_sp.get(), recv_sp.use_count());
-                if(!context.recv_fifo.full())
-                    context.recv_fifo.write(this, recv_sp);
+                if(!context.recv_fifo.full()){
+                    RecvDetail rd(this, recv_sp);
+                    context.recv_fifo.write(rd);
+                }
                 continue;
             }else if(r==0){
                 printf("Endpoint::processRecv RECV_INPROGRESS connection lost\n");

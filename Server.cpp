@@ -1,5 +1,5 @@
 #include "Endpoint.h"
-#include "ServerFifo.h"
+#include "Fifo.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -79,8 +79,17 @@ void sig_handler(int sig)
     active = false;
 }
 
+struct ServerDetail
+{
+    void *arg;
+    unsigned short code;
+    ServerDetail(){}
+    ServerDetail(void *arg, unsigned short code)
+        : arg(arg), code(code) {}
+};
+
 pthread_t server_thread;
-ServerFifo server_fifo(5);
+Fifo<ServerDetail> server_fifo(5);
 Semaphore delete_sem(0);
 std::list<Endpoint*> clients;
 struct ClientUserData
@@ -93,12 +102,11 @@ void* server_thread_routine(void *nu)
 {
     printf("server_thread_routine\n");
     while(active){
-        void *arg;
-        unsigned short code;
-        if(server_fifo.read(arg, code, 250)){
+        ServerDetail sd;
+        if(server_fifo.read(sd, 250)){
             printf("server_thread_routine new code\n");
-            if(code==P_DATA_CODE_NEW_CONN){
-                Endpoint *e = (Endpoint*)arg;
+            if(sd.code==P_DATA_CODE_NEW_CONN){
+                Endpoint *e = (Endpoint*)sd.arg;
                 // broadcast new connection to client list
                 // and echo client list connections
                 std::shared_ptr<char[]> sp_new =
@@ -114,8 +122,8 @@ void* server_thread_routine(void *nu)
                 ClientUserData *udata = (ClientUserData*)e->user_data;
                 udata->it = clients.begin();
                 udata->index = e->container->index;
-            }else if(code==P_DATA_CODE_DEL_CONN){
-                ClientUserData *udata = (ClientUserData*)arg;
+            }else if(sd.code==P_DATA_CODE_DEL_CONN){
+                ClientUserData *udata = (ClientUserData*)sd.arg;
                 // remove from the client list
                 clients.erase(udata->it);
                 // broadcast the del conn to the client list
@@ -138,14 +146,16 @@ void server_new_cb(Endpoint *e)
     // allocate the client user data
     ClientUserData *udata = new ClientUserData;
     e->user_data = (void*)udata;
-    server_fifo.write((void*)e, P_DATA_CODE_NEW_CONN);
+    ServerDetail sd((void*)e, P_DATA_CODE_NEW_CONN);
+    server_fifo.write(sd);
 }
 
 void server_delete_cb(Endpoint *e)
 {
     if(!active) return;
     ClientUserData* udata = (ClientUserData*)e->user_data;
-    server_fifo.write((void*)udata, P_DATA_CODE_DEL_CONN);
+    ServerDetail sd((void*)udata, P_DATA_CODE_DEL_CONN);
+    server_fifo.write(sd);
     delete_sem.wait();
 }
 

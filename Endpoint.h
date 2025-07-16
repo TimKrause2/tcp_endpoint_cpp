@@ -2,7 +2,6 @@
 #include "Timer.h"
 #include "Fifo.h"
 #include "Semaphore.h"
-#include "RecvFifo.h"
 #include <map>
 #include <memory>
 #include <pthread.h>
@@ -35,6 +34,15 @@ public:
     void deleteEndpoint(void);
 };
 
+struct RecvDetail
+{
+    Endpoint *e;
+    std::shared_ptr<char[]> sp;
+    RecvDetail(void){};
+    RecvDetail(Endpoint *e, std::shared_ptr<char[]> sp)
+        : e(e), sp(sp) {}
+};
+
 class EndpointContext
 {
     std::unique_ptr<EndpointContainer[]> endpoints;
@@ -51,7 +59,7 @@ class EndpointContext
 public:
     void (*new_cb)(Endpoint *e);
     void (*delete_cb)(Endpoint *e);
-    RecvFifo recv_fifo;
+    Fifo<RecvDetail> recv_fifo;
     Semaphore active_sem;
     int epoll_fd;
     EndpointContext(
@@ -98,7 +106,7 @@ public:
     std::shared_ptr<char[]> send_sp;
     char  *send_buf;
     size_t send_bytes;
-    Fifo   send_fifo;
+    Fifo<std::shared_ptr<char[]>> send_fifo;
 
     int recv_state;
     std::shared_ptr<char[]> recv_sp;

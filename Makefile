@@ -1,18 +1,15 @@
 CPPFLAGS=-ggdb
 CC=g++
 
-COMMON_OBJECTS=Endpoint.o Fifo.o Semaphore.o Timer.o Protocol.o \
-    RecvFifo.o
+COMMON_OBJECTS=Endpoint.o Semaphore.o Timer.o Protocol.o
 
 all: Client Server
 
 Client: Client.o $(COMMON_OBJECTS)
 
-Server: Server.o $(COMMON_OBJECTS) ServerFifo.o
+Server: Server.o $(COMMON_OBJECTS)
 
 Endpoint.o:Endpoint.cpp
-
-Fifo.o:Fifo.cpp
 
 Semaphore.o:Semaphore.cpp
 
@@ -25,7 +22,3 @@ Server.o:Server.cpp
 Timer.o:Timer.cpp
 
 Pipe.o:Pipe.cpp
-
-RecvFifo.o:RecvFifo.cpp
-
-ServerFifo.o:ServerFifo.cpp
